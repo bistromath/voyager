@@ -8,10 +8,10 @@ import matplotlib.pyplot as plt
 import math
 import multiprocessing
 
-samp_rate = 2929687.5
+samp_rate = 546133.0
 decim_rate = 10
 start_time = 0
-end_time = 60
+end_time = 120
 nsecs = end_time-start_time #total amount of time to read from the file -- integration time
 fftlen = 65536*4
 num_integrations = int(samp_rate*nsecs/decim_rate/fftlen)
@@ -23,16 +23,16 @@ print "FFT length: %i" % veclen
 bin_size = samp_rate/decim_rate/veclen
 print "Bin size: %.2f" % bin_size
 
-sig_start = 8419299884.80
-rec_ctr = 8419921875 #center frequency of the recording
+sig_start = 8419545156.51 #calculated Doppler-corrected VGER1 carrier frequency
+rec_ctr   = 8419530000.00 #center frequency of the recording
 offset = sig_start-rec_ctr #offset frequency at the start of the recording
-samplesize=1
-invert_spectrum=True
+samplesize=2
+invert_spectrum=False
 
 #TODO: sigMF this
-filename = 'blc07_guppi_57650_67573_Voyager1_pol1.sigmf-data'
+filename = 'vger1-2010-07-14-xpol.sigmf-data'
 
-candidate_drifts = np.linspace(-0.30, -0.50, 10)
+candidate_drifts = np.linspace(-0.5, -0.4, 20)
 
 #current problem: how to keep phase continuity between integrations
 def try_acquisition(drift):
@@ -42,7 +42,7 @@ def try_acquisition(drift):
     f.seek(int(start_time*samp_rate*samplesize*2))
     lastphase = 0
     for i in range(num_integrations):
-        vec = np.fromstring(f.read(input_veclen*2*samplesize), dtype=np.int8).astype(np.float64)/(2**(samplesize*8))
+        vec = np.fromstring(f.read(input_veclen*2*samplesize), dtype=np.int16).astype(np.float64)/(2**(samplesize*8))
         cvec = vec.view(np.complex128)
         if invert_spectrum:
             cvec = np.conj(cvec)
@@ -52,7 +52,10 @@ def try_acquisition(drift):
         freqshiftvec = np.exp(1j*(-2*math.pi*freqvec*np.arange(input_veclen)/samp_rate+lastphase))
         lastphase = np.angle(freqshiftvec[-1])
         rvec = cvec * freqshiftvec
-        dvec = scipy.signal.resample_poly(rvec, 1, decim_rate)
+        if(decim_rate > 1):
+            dvec = scipy.signal.resample_poly(rvec, 1, decim_rate)
+        else:
+            dvec = rvec
         W = scipy.signal.blackman(len(dvec))
         H = scipy.fftpack.fft(dvec*W, len(dvec))
         Ha = scipy.fftpack.fftshift(H)
@@ -72,7 +75,7 @@ Hl = best[2]
 print "Best correlation: %.2fdB" % best_corr
 print "Best drift rate: %.5fHz/s" % best_drift
 
-freqs = np.arange(-samp_rate/decim_rate/2, samp_rate/decim_rate/2, samp_rate/decim_rate/fftlen)
+freqs = np.linspace(-samp_rate/decim_rate/2, samp_rate/decim_rate/2, fftlen)
 
 plt.plot(freqs, Hl, color='blue', label="%.2f" % best_drift)
 for p in correlations:
